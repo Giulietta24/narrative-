@@ -6,12 +6,11 @@ from datetime import datetime, timedelta
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import plotly.express as px
 
-st.set_page_config(page_title="Short-Term Narrative Scanner", layout="wide")
+st.set_page_config(page_title="High-Probability Narrative Engine", layout="wide")
 
-st.title("⚡ Hyper-Tactical Narrative Scanner (Short-Term)")
-st.write("Optimized for 1 to 5-day hold strategies using a 10-day trend + Daily Confirmation filter.")
+st.title("🛡️ Institutional Confluence & Narrative Engine")
+st.write("Filtering short-term sentiment alongside Volume Spikes, Macro Trends, and RSI Guardrails.")
 
-# Initialize VADER
 @st.cache_resource
 def load_analyzer():
     return SentimentIntensityAnalyzer()
@@ -24,7 +23,7 @@ analyzer = load_analyzer()
 def get_aggregated_sentiment(ticker_symbol):
     try:
         if "FINNHUB_API_KEY" not in st.secrets:
-            return 0.0, "ERROR", "Missing API Secret Configuration", 0
+            return 0.0, "ERROR", 0
             
         api_key = st.secrets["FINNHUB_API_KEY"]
         clean_symbol = ticker_symbol.split('.')[0].strip().upper()
@@ -37,7 +36,7 @@ def get_aggregated_sentiment(ticker_symbol):
         news_list = response.json()
         
         if not news_list or not isinstance(news_list, list):
-            return 0.0, "NEUTRAL", "No news found in last 30 days.", 0
+            return 0.0, "NEUTRAL", 0
         
         scores = []
         max_headlines = min(len(news_list), 15)
@@ -49,21 +48,29 @@ def get_aggregated_sentiment(ticker_symbol):
                 scores.append(vs['compound'])
                 
         if not scores:
-            return 0.0, "NEUTRAL", "No text data extracted.", 0
+            return 0.0, "NEUTRAL", 0
             
         avg_score = sum(scores) / len(scores)
-        return round(avg_score, 2), "POSITIVE" if avg_score >= 0.05 else ("NEGATIVE" if avg_score <= -0.05 else "NEUTRAL"), news_list[0].get('headline', 'N/A'), len(scores)
+        label = "POSITIVE" if avg_score >= 0.05 else ("NEGATIVE" if avg_score <= -0.05 else "NEUTRAL")
+        return round(avg_score, 2), label, len(scores)
         
-    except Exception as e:
-        return 0.0, "ERROR", f"Connection Fail: {str(e)}", 0
+    except Exception:
+        return 0.0, "ERROR", 0
 
 # ---------------------------------------------------
-# FETCH SHORT-TERM TREND & DAILY CONFIRMATION
+# CONFLUENCE TECH FILTERS (RVOL, SMA, RSI)
 # ---------------------------------------------------
-def get_short_term_metrics(ticker_symbol):
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / (loss + 1e-9)
+    return 100 - (100 / (1 + rs))
+
+def get_confluence_data(ticker_symbol):
     try:
-        # Download slightly more than 10 days to handle weekends/holidays securely
-        df = yf.download(ticker_symbol.strip(), period="1mo", interval="1d", group_by="column", progress=False)
+        # Pull 1 year of data to calculate the 200-day Moving Average securely
+        df = yf.download(ticker_symbol.strip(), period="1y", interval="1d", group_by="column", progress=False)
         if df is None or df.empty:
             return None
             
@@ -71,91 +78,106 @@ def get_short_term_metrics(ticker_symbol):
             df.columns = df.columns.get_level_values(0)
             
         close = df["Close"]
-        if len(close) < 11:
+        volume = df["Volume"]
+        
+        if len(close) < 200:
             return None
             
-        # 1. 10-Day Trend Calculation
+        # Core Price Metrics
         today_close = float(close.iloc[-1])
-        ten_days_ago_close = float(close.iloc[-10])
-        trend_10d = round(((today_close - ten_days_ago_close) / ten_days_ago_close) * 100, 2)
-        
-        # 2. Secondary Filter: Up Today Check (Current close vs Yesterday's close)
         yesterday_close = float(close.iloc[-2])
-        is_up_today = today_close > yesterday_close
-        daily_change = round(((today_close - yesterday_close) / yesterday_close) * 100, 2)
+        ten_days_ago = float(close.iloc[-10])
         
-        return trend_10d, is_up_today, daily_change
+        trend_10d = round(((today_close - ten_days_ago) / ten_days_ago) * 100, 2)
+        is_up_today = today_close > yesterday_close
+        
+        # Confluence Indicator 1: 200-day Structural Trend Anchor
+        sma_200 = close.rolling(window=200).mean().iloc[-1]
+        above_macro_trend = today_close > sma_200
+        
+        # Confluence Indicator 2: Relative Volume (RVOL)
+        # Compares today's volume against the 10-day average volume
+        avg_vol_10d = volume.iloc[-11:-1].mean()
+        rvol = round(float(volume.iloc[-1] / (avg_vol_10d + 1e-9)), 2)
+        
+        # Confluence Indicator 3: RSI Guardrail
+        rsi_series = calculate_rsi(close, period=14)
+        current_rsi = round(float(rsi_series.iloc[-1]), 2)
+        
+        return {
+            "trend_10d": trend_10d,
+            "is_up_today": is_up_today,
+            "above_macro_trend": above_macro_trend,
+            "rvol": rvol,
+            "rsi": current_rsi
+        }
     except Exception:
         return None
 
 # ------------------------------------
-# DYNAMIC INTERFACE CONTROLS
+# INTERFACE
 # ------------------------------------
-st.sidebar.header("🛠️ Dashboard Controls")
-user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="IWM, AAPL, NVDA, TSLA, MSFT")
+st.sidebar.header("🛠️ Confluence Panel")
+user_input = st.sidebar.text_input("Tickers:", value="AAPL, NVDA, TSLA, MSFT, AMD")
 watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-run_scan = st.sidebar.button("🚀 Run Short-Term Tactical Scan")
+run_scan = st.sidebar.button("🛡️ Scan with Confluence Filters")
 
-# ------------------------------------
-# PROCESS SCREENER EXECUTION
-# ------------------------------------
 if run_scan:
     results = []
     
-    with st.spinner("Processing tactical micro-trends..."):
+    with st.spinner("Analyzing multi-factor confluence variables..."):
         for ticker in watch_list:
-            price_metrics = get_short_term_metrics(ticker)
-            if price_metrics is None:
-                st.warning(f"⚠️ Insufficient trading history for: **{ticker}**")
+            tech = get_confluence_data(ticker)
+            if tech is None:
+                st.warning(f"⚠️ Stock skipped (Needs 1-year history for 200-MA mapping): **{ticker}**")
                 continue
                 
-            trend_10d, is_up_today, daily_change = price_metrics
-            sentiment_score, sentiment_label, top_news, volume = get_aggregated_sentiment(ticker)
+            sent_score, sent_label, vol = get_aggregated_sentiment(ticker)
             
-            # --- HYPER TACTICAL FILTER SELECTION LOGIC ---
-            if sentiment_score >= 0.05 and trend_10d > 0:
-                if is_up_today:
-                    action = "🟢 GREEN LIGHT: Strong Entry (Trend + News + Daily Confirmation)"
+            # --- HIGH PROBABILITY CONFLUENCE SCORING SYSTEM ---
+            score_cards = 0
+            if sent_score >= 0.10: score_cards += 1  # Solid positive narrative
+            if tech["trend_10d"] > 0: score_cards += 1  # 10-day momentum
+            if tech["is_up_today"]: score_cards += 1  # Intraday green confirmation
+            if tech["above_macro_trend"]: score_cards += 1  # Structural market tide support
+            if tech["rvol"] >= 1.5: score_cards += 1  # Institutional footprint present
+            
+            # Formulate Strict Trading Action Plan
+            if score_cards >= 4:
+                if tech["rsi"] > 75:
+                    action = "🟡 OVERBOUGHT HOLD: High Confluence, but RSI is overextended. Wait for cooling."
                 else:
-                    action = "🟡 PULLBACK: Wait (Good Trend/News, but Down Today)"
-            elif sentiment_score >= 0.05 and trend_10d <= 0:
-                if is_up_today:
-                    action = "🔵 REVERSAL WATCH: Early Entry Speculation"
-                else:
-                    action = "📉 VALUE TRAP: Avoid (Good News, Crashing Price)"
-            elif sentiment_score < -0.05 and trend_10d > 0:
-                action = "⚠️ EXHAUSTION: Danger (Price high, but news turning toxic)"
+                    action = "🔥 HIGH PROBABILITY BUY: Complete Confluence Aligned."
+            elif score_cards == 3:
+                action = "🔵 MODERATE MOMENTUM: Decent setup, missing key confirmation pillars."
             else:
-                action = "🔴 RED LIGHT: No Setup (Negative/Neutral Momentum)"
+                action = "🚫 RED LIGHT: Low Probability. Sub-optimal conditions."
                 
             results.append({
                 "Ticker": ticker,
-                "10d Trend (%)": trend_10d,
-                "Daily Change (%)": daily_change,
-                "Confirmed Up Today?": "✅ Yes" if is_up_today else "❌ No",
-                "Sentiment Score": sentiment_score,
+                "Confluence Match (/5)": score_cards,
                 "Tactical Strategy": action,
-                "Latest Headline Preview": top_news
+                "10d Trend": f"{tech['trend_10d']}%",
+                "RVOL (Vol Spike)": tech["rvol"],
+                "Current RSI": tech["rsi"],
+                "Macro Bull Market?": "✅ Yes" if tech["above_macro_trend"] else "❌ No",
+                "Sentiment Score": sent_score
             })
             
     if results:
         df_results = pd.DataFrame(results)
-        st.write("### 📌 Short-Term Tactical Matrix")
+        st.write("### 🛡️ Verified Action Output Matrix")
         st.dataframe(df_results, use_container_width=True)
         
-        # Matrix Chart Map
-        st.write("### 🗺️ Micro-Momentum Map")
         fig = px.scatter(
             df_results, 
             x="Sentiment Score", 
-            y="10d Trend (%)",
+            y="RVOL (Vol Spike)",
             text="Ticker",
             color="Tactical Strategy",
-            range_x=[-1, 1],
-            title="Short-Term Execution Mapping",
-            labels={"Sentiment Score": "Media Sentiment Baseline", "10d Trend (%)": "10-Day Momentum Window (%)"}
+            size="Current RSI",
+            title="Confluence Clustering Map (Bubble size matches RSI value)",
+            labels={"Sentiment Score": "Media Sentiment", "RVOL (Vol Spike)": "Relative Volume Multiplier"}
         )
-        fig.update_traces(textposition='top center', marker=dict(size=14))
-        fig.add_hline(y=0, line_dash="dash", line_color="gray")
-        fig.add_vline(x=0, line_dash="dash", line_color="gray")
+        fig.add_hline(y=1.5, line_dash="dash", line_color="orange", annotation_text="Institutional Volume Line")
         st.plotly_chart(fig, use_container_width=True)
