@@ -6,16 +6,35 @@ from datetime import datetime, timedelta
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import plotly.express as px
 
-st.set_page_config(page_title="High-Probability Narrative Engine", layout="wide")
+st.set_page_config(page_title="Options Confluence Engine", layout="wide")
 
-st.title("🛡️ Institutional Confluence & Narrative Engine")
-st.write("Filtering short-term sentiment alongside Volume Spikes, Macro Trends, and RSI Guardrails.")
+st.title("🛡️ Institutional Confluence & Options Trading Engine")
+st.write("Filtering Call and Put opportunities using Volume Spikes, Macro Trends, and RSI Guardrails.")
 
 @st.cache_resource
 def load_analyzer():
     return SentimentIntensityAnalyzer()
 
 analyzer = load_analyzer()
+
+# ---------------------------------------------------
+# EXPANDED TACTICAL GLOSSARY KEY
+# ---------------------------------------------------
+with st.expander("📖 Click to view Strategy Key & Pillar Meanings"):
+    st.markdown("""
+    ### 🧭 The 5 Confluence Pillars Explained
+    Your score is calculated out of 5 based on how many of these conditions are met:
+    1. **Positive Sentiment:** Aggregate media coverage scores above +0.10.
+    2. **10-Day Up-Trend:** The short-term trajectory is moving upward.
+    3. **Daily Confirmation:** The price is trading higher than yesterday's close (No falling knives).
+    4. **Macro Bull Market:** Price is securely above the 200-day Moving Average (Structural safety).
+    5. **Volume Spike (RVOL >= 1.5):** Volume is 50%+ higher than average (Institutional confirmation).
+
+    ### 🛑 Decoding 'Missing Confirmation Pillars'
+    * **Score 4-5 (High Probability Calls):** Complete confluence. All technical and narrative factors align.
+    * **Score 3 (Moderate Momentum):** The asset is moving, but lacks institutional volume or is trapped under a long-term macro bear market line. **High risk for options.**
+    * **Score 0-1 (High Probability Puts):** Complete negative confluence. Toxic news paired with heavy technical selling volume. Perfect for buying puts.
+    """)
 
 # ---------------------------------------------------
 # SECURE AGGREGATED NEWS SENTIMENT
@@ -58,7 +77,7 @@ def get_aggregated_sentiment(ticker_symbol):
         return 0.0, "ERROR", 0
 
 # ---------------------------------------------------
-# CONFLUENCE TECH FILTERS (RVOL, SMA, RSI)
+# CONFLUENCE TECH FILTERS
 # ---------------------------------------------------
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -69,7 +88,6 @@ def calculate_rsi(series, period=14):
 
 def get_confluence_data(ticker_symbol):
     try:
-        # Pull 1 year of data to calculate the 200-day Moving Average securely
         df = yf.download(ticker_symbol.strip(), period="1y", interval="1d", group_by="column", progress=False)
         if df is None or df.empty:
             return None
@@ -83,7 +101,6 @@ def get_confluence_data(ticker_symbol):
         if len(close) < 200:
             return None
             
-        # Core Price Metrics
         today_close = float(close.iloc[-1])
         yesterday_close = float(close.iloc[-2])
         ten_days_ago = float(close.iloc[-10])
@@ -91,16 +108,12 @@ def get_confluence_data(ticker_symbol):
         trend_10d = round(((today_close - ten_days_ago) / ten_days_ago) * 100, 2)
         is_up_today = today_close > yesterday_close
         
-        # Confluence Indicator 1: 200-day Structural Trend Anchor
         sma_200 = close.rolling(window=200).mean().iloc[-1]
         above_macro_trend = today_close > sma_200
         
-        # Confluence Indicator 2: Relative Volume (RVOL)
-        # Compares today's volume against the 10-day average volume
         avg_vol_10d = volume.iloc[-11:-1].mean()
         rvol = round(float(volume.iloc[-1] / (avg_vol_10d + 1e-9)), 2)
         
-        # Confluence Indicator 3: RSI Guardrail
         rsi_series = calculate_rsi(close, period=14)
         current_rsi = round(float(rsi_series.iloc[-1]), 2)
         
@@ -115,69 +128,85 @@ def get_confluence_data(ticker_symbol):
         return None
 
 # ------------------------------------
-# INTERFACE
+# DYNAMIC SIDEBAR INTERFACE
 # ------------------------------------
-st.sidebar.header("🛠️ Confluence Panel")
-user_input = st.sidebar.text_input("Tickers:", value="AAPL, NVDA, TSLA, MSFT, AMD")
+st.sidebar.header("🛠️ Options Radar Panel")
+user_input = st.sidebar.text_input("Tickers:", value="AAPL, NVDA, TSLA, MSFT, AMD, BABA, AMZN")
 watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-run_scan = st.sidebar.button("🛡️ Scan with Confluence Filters")
+run_scan = st.sidebar.button("🛡️ Scan for Call/Put Confluence")
 
 if run_scan:
     results = []
     
-    with st.spinner("Analyzing multi-factor confluence variables..."):
+    with st.spinner("Screening options contracts alignment indicators..."):
         for ticker in watch_list:
             tech = get_confluence_data(ticker)
             if tech is None:
-                st.warning(f"⚠️ Stock skipped (Needs 1-year history for 200-MA mapping): **{ticker}**")
+                st.warning(f"⚠️ Stock skipped (Needs 1-year history for macro trends): **{ticker}**")
                 continue
                 
             sent_score, sent_label, vol = get_aggregated_sentiment(ticker)
             
-            # --- HIGH PROBABILITY CONFLUENCE SCORING SYSTEM ---
+            # --- CONFLUENCE METRIC POINT ACCUMULATION ---
             score_cards = 0
-            if sent_score >= 0.10: score_cards += 1  # Solid positive narrative
-            if tech["trend_10d"] > 0: score_cards += 1  # 10-day momentum
-            if tech["is_up_today"]: score_cards += 1  # Intraday green confirmation
-            if tech["above_macro_trend"]: score_cards += 1  # Structural market tide support
-            if tech["rvol"] >= 1.5: score_cards += 1  # Institutional footprint present
+            if sent_score >= 0.10: score_cards += 1
+            if tech["trend_10d"] > 0: score_cards += 1
+            if tech["is_up_today"]: score_cards += 1
+            if tech["above_macro_trend"]: score_cards += 1
+            if tech["rvol"] >= 1.5: score_cards += 1
             
-            # Formulate Strict Trading Action Plan
+            # --- OPTIONS ACTION ENGINE SELECTOR ---
             if score_cards >= 4:
                 if tech["rsi"] > 75:
-                    action = "🟡 OVERBOUGHT HOLD: High Confluence, but RSI is overextended. Wait for cooling."
+                    action = "🟡 CALL HOLD: Strong trend, but RSI Overbought. Wait for minor dip."
                 else:
-                    action = "🔥 HIGH PROBABILITY BUY: Complete Confluence Aligned."
+                    action = "🟢 BUY LONG CALLS: High Bullish Confluence aligned."
+            elif score_cards <= 1 and sent_score <= -0.10 and not tech["above_macro_trend"]:
+                if tech["rsi"] < 25:
+                    action = "🟡 PUT HOLD: Heavily bearish, but RSI Oversold. Wait for temporary bounce."
+                else:
+                    action = "🔴 BUY LONG PUTS: High Bearish Confluence aligned."
             elif score_cards == 3:
-                action = "🔵 MODERATE MOMENTUM: Decent setup, missing key confirmation pillars."
+                action = "🔵 MODERATE MOMENTUM: Missing confirmation pillars. No clear options trade."
             else:
-                action = "🚫 RED LIGHT: Low Probability. Sub-optimal conditions."
+                action = "🚫 NO OPTIONS SETUP: Unreliable noise/Chop zone."
                 
             results.append({
                 "Ticker": ticker,
-                "Confluence Match (/5)": score_cards,
-                "Tactical Strategy": action,
+                "Confluence Score (/5)": score_cards,
+                "Options Strategy": action,
                 "10d Trend": f"{tech['trend_10d']}%",
-                "RVOL (Vol Spike)": tech["rvol"],
-                "Current RSI": tech["rsi"],
-                "Macro Bull Market?": "✅ Yes" if tech["above_macro_trend"] else "❌ No",
+                "Volume Spike (RVOL)": tech["rvol"],
+                "RSI": tech["rsi"],
+                "Macro Bull?": "✅ Yes" if tech["above_macro_trend"] else "❌ No",
                 "Sentiment Score": sent_score
             })
             
     if results:
         df_results = pd.DataFrame(results)
-        st.write("### 🛡️ Verified Action Output Matrix")
+        st.write("### 🎯 Options Target Matrix")
         st.dataframe(df_results, use_container_width=True)
         
+        # Plotly chart with high visibility text
+        st.write("### 🗺️ Options Cluster Radar Map")
         fig = px.scatter(
             df_results, 
             x="Sentiment Score", 
-            y="RVOL (Vol Spike)",
+            y="Volume Spike (RVOL)",
             text="Ticker",
-            color="Tactical Strategy",
-            size="Current RSI",
-            title="Confluence Clustering Map (Bubble size matches RSI value)",
-            labels={"Sentiment Score": "Media Sentiment", "RVOL (Vol Spike)": "Relative Volume Multiplier"}
+            color="Options Strategy",
+            size="RSI",
+            title="Options Distribution Clusters (Bubble size matches RSI)",
+            labels={"Sentiment Score": "Media Sentiment", "Volume Spike (RVOL)": "Relative Volume Spikes (RVOL)"}
         )
-        fig.add_hline(y=1.5, line_dash="dash", line_color="orange", annotation_text="Institutional Volume Line")
+        
+        # FIX: Force text tags to render pitch black and display bold above the bubble
+        fig.update_traces(
+            textposition='top center', 
+            textfont=dict(color='black', size=13, family='Arial Black')
+        )
+        
+        fig.add_hline(y=1.5, line_dash="dash", line_color="black", annotation_text="Institutional Volume Baseline")
+        fig.add_vline(x=0, line_dash="dash", line_color="gray")
+        
         st.plotly_chart(fig, use_container_width=True)
