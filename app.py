@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import plotly.express as px
 
-st.set_page_config(page_title="Options Confluence Engine", layout="wide")
+st.set_page_config(page_title="Automated Options Radar", layout="wide")
 
-st.title("🛡️ Institutional Confluence & Options Trading Engine")
-st.write("Filtering Call and Put opportunities using Volume Spikes, Macro Trends, and RSI Guardrails.")
+st.title("🛡️ Institutional Confluence & Automated Options Engine")
+st.write("Cross-filtering dynamic market targets via automated indices or manual entry profiles.")
 
 @st.cache_resource
 def load_analyzer():
@@ -18,7 +18,7 @@ def load_analyzer():
 analyzer = load_analyzer()
 
 # ---------------------------------------------------
-# EXPANDED TACTICAL GLOSSARY KEY
+# STRATEGY EXPLANATION GLOSSARY
 # ---------------------------------------------------
 with st.expander("📖 Click to view Strategy Key & Pillar Meanings"):
     st.markdown("""
@@ -30,10 +30,9 @@ with st.expander("📖 Click to view Strategy Key & Pillar Meanings"):
     4. **Macro Bull Market:** Price is securely above the 200-day Moving Average (Structural safety).
     5. **Volume Spike (RVOL >= 1.5):** Volume is 50%+ higher than average (Institutional confirmation).
 
-    ### 🛑 Decoding 'Missing Confirmation Pillars'
-    * **Score 4-5 (High Probability Calls):** Complete confluence. All technical and narrative factors align.
-    * **Score 3 (Moderate Momentum):** The asset is moving, but lacks institutional volume or is trapped under a long-term macro bear market line. **High risk for options.**
-    * **Score 0-1 (High Probability Puts):** Complete negative confluence. Toxic news paired with heavy technical selling volume. Perfect for buying puts.
+    ### 🧭 Options Target Matching
+    * **🟢 BUY LONG CALLS (Score 4-5):** Complete positive confluence. High-volume breakout backed by heavy institutional buying.
+    * **🔴 BUY LONG PUTS (Score 0-1 + Negative News):** Complete negative confluence. Perfect structural breakdown environment.
     """)
 
 # ---------------------------------------------------
@@ -77,7 +76,7 @@ def get_aggregated_sentiment(ticker_symbol):
         return 0.0, "ERROR", 0
 
 # ---------------------------------------------------
-# CONFLUENCE TECH FILTERS
+# CONFLUENCE TECHNICAL CALCULATION UTILITIES
 # ---------------------------------------------------
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -127,27 +126,41 @@ def get_confluence_data(ticker_symbol):
     except Exception:
         return None
 
-# ------------------------------------
-# DYNAMIC SIDEBAR INTERFACE
-# ------------------------------------
-st.sidebar.header("🛠️ Options Radar Panel")
-user_input = st.sidebar.text_input("Tickers:", value="AAPL, NVDA, TSLA, MSFT, AMD, BABA, AMZN")
-watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-run_scan = st.sidebar.button("🛡️ Scan for Call/Put Confluence")
+# ---------------------------------------------------
+# DYNAMIC SELECTION SIDEBAR PANEL INTERFACE
+# ---------------------------------------------------
+st.sidebar.header("⚙️ Selection Modes")
+scan_mode = st.sidebar.radio(
+    "Choose Target Discovery Method:",
+    ("🔥 Auto Market Scanner", "✍️ Manual Custom Entry")
+)
 
+if scan_mode == "✍️ Manual Custom Entry":
+    user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="AAPL, NVDA, TSLA")
+    watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
+else:
+    # AUTOMATED PRE-BUILT HIGH LIQUIDITY OPTIONS PORTFOLIO LIST
+    # Selected across 4 key option categories: Mega Cap, High-beta growth, Index tracking ETFs, Churners
+    watch_list = ["AAPL", "NVDA", "TSLA", "AMD", "MSFT", "AMZN", "META", "GOOG", "NFLX", "COIN", "MARA", "PLTR", "SPY", "QQQ", "IWM"]
+    st.sidebar.info("💡 **Auto Mode Enabled:** Currently scanning the top 15 most liquid option underlyings in the global market.")
+
+run_scan = st.sidebar.button("🛡️ Run Scan Matrix Pipeline")
+
+# ---------------------------------------------------
+# APP EXECUTION LOOP
+# ---------------------------------------------------
 if run_scan:
     results = []
     
-    with st.spinner("Screening options contracts alignment indicators..."):
+    with st.spinner(f"Processing matrix data pipelines for {len(watch_list)} targets..."):
         for ticker in watch_list:
             tech = get_confluence_data(ticker)
             if tech is None:
-                st.warning(f"⚠️ Stock skipped (Needs 1-year history for macro trends): **{ticker}**")
                 continue
                 
             sent_score, sent_label, vol = get_aggregated_sentiment(ticker)
             
-            # --- CONFLUENCE METRIC POINT ACCUMULATION ---
+            # --- CONFLUENCE SCORE ACCUMULATION ---
             score_cards = 0
             if sent_score >= 0.10: score_cards += 1
             if tech["trend_10d"] > 0: score_cards += 1
@@ -155,21 +168,21 @@ if run_scan:
             if tech["above_macro_trend"]: score_cards += 1
             if tech["rvol"] >= 1.5: score_cards += 1
             
-            # --- OPTIONS ACTION ENGINE SELECTOR ---
+            # --- OPTION CLASSIFICATION CONDITIONALS ---
             if score_cards >= 4:
                 if tech["rsi"] > 75:
-                    action = "🟡 CALL HOLD: Strong trend, but RSI Overbought. Wait for minor dip."
+                    action = "🟡 CALL HOLD: Overbought. Wait for minor dip."
                 else:
                     action = "🟢 BUY LONG CALLS: High Bullish Confluence aligned."
             elif score_cards <= 1 and sent_score <= -0.10 and not tech["above_macro_trend"]:
                 if tech["rsi"] < 25:
-                    action = "🟡 PUT HOLD: Heavily bearish, but RSI Oversold. Wait for temporary bounce."
+                    action = "🟡 PUT HOLD: Oversold. Wait for brief bounce."
                 else:
                     action = "🔴 BUY LONG PUTS: High Bearish Confluence aligned."
             elif score_cards == 3:
-                action = "🔵 MODERATE MOMENTUM: Missing confirmation pillars. No clear options trade."
+                action = "🔵 MODERATE MOMENTUM: Missing key confirmation pillars."
             else:
-                action = "🚫 NO OPTIONS SETUP: Unreliable noise/Chop zone."
+                action = "🚫 NO OPTIONS SETUP: Unreliable chop zone."
                 
             results.append({
                 "Ticker": ticker,
@@ -184,11 +197,11 @@ if run_scan:
             
     if results:
         df_results = pd.DataFrame(results)
-        st.write("### 🎯 Options Target Matrix")
+        st.write("### 🎯 Live Options Setup Target Matrix")
         st.dataframe(df_results, use_container_width=True)
         
-        # Plotly chart with high visibility text
-        st.write("### 🗺️ Options Cluster Radar Map")
+        # Plotly chart output configurations
+        st.write("### 🗺️ Live Options Cluster Distribution Map")
         fig = px.scatter(
             df_results, 
             x="Sentiment Score", 
@@ -196,11 +209,12 @@ if run_scan:
             text="Ticker",
             color="Options Strategy",
             size="RSI",
+            range_x=[-1, 1],
             title="Options Distribution Clusters (Bubble size matches RSI)",
             labels={"Sentiment Score": "Media Sentiment", "Volume Spike (RVOL)": "Relative Volume Spikes (RVOL)"}
         )
         
-        # FIX: Force text tags to render pitch black and display bold above the bubble
+        # Format text parameters for extreme black legibility contrast
         fig.update_traces(
             textposition='top center', 
             textfont=dict(color='black', size=13, family='Arial Black')
@@ -210,3 +224,5 @@ if run_scan:
         fig.add_vline(x=0, line_dash="dash", line_color="gray")
         
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.error("Screener execution timeout or missing server arrays. Try running the scan process again.")
