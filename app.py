@@ -2,14 +2,15 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import requests
+import re
 from datetime import datetime, timedelta
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import plotly.express as px
 
-st.set_page_config(page_title="Automated Options Radar", layout="wide")
+st.set_page_config(page_title="Dynamic Options Radar", layout="wide")
 
-st.title("🛡️ Institutional Confluence & Automated Options Engine")
-st.write("Cross-filtering dynamic market targets via automated indices or manual entry profiles.")
+st.title("🛡️ Institutional Confluence & Narrative Options Engine")
+st.write("Extracting trending tickers dynamically from live market narratives and running multi-pillar filters.")
 
 @st.cache_resource
 def load_analyzer():
@@ -18,22 +19,44 @@ def load_analyzer():
 analyzer = load_analyzer()
 
 # ---------------------------------------------------
-# STRATEGY EXPLANATION GLOSSARY
+# DYNAMIC NARRATIVE SCRAPER (No Hardcoding)
 # ---------------------------------------------------
-with st.expander("📖 Click to view Strategy Key & Pillar Meanings"):
-    st.markdown("""
-    ### 🧭 The 5 Confluence Pillars Explained
-    Your score is calculated out of 5 based on how many of these conditions are met:
-    1. **Positive Sentiment:** Aggregate media coverage scores above +0.10.
-    2. **10-Day Up-Trend:** The short-term trajectory is moving upward.
-    3. **Daily Confirmation:** The price is trading higher than yesterday's close (No falling knives).
-    4. **Macro Bull Market:** Price is securely above the 200-day Moving Average (Structural safety).
-    5. **Volume Spike (RVOL >= 1.5):** Volume is 50%+ higher than average (Institutional confirmation).
-
-    ### 🧭 Options Target Matching
-    * **🟢 BUY LONG CALLS (Score 4-5):** Complete positive confluence. High-volume breakout backed by heavy institutional buying.
-    * **🔴 BUY LONG PUTS (Score 0-1 + Negative News):** Complete negative confluence. Perfect structural breakdown environment.
-    """)
+def get_dynamic_trending_tickers():
+    try:
+        if "FINNHUB_API_KEY" not in st.secrets:
+            st.error("Missing Finnhub API Key in Streamlit Secrets.")
+            return []
+            
+        api_key = st.secrets["FINNHUB_API_KEY"]
+        # Pulling breaking market news from the general live stream
+        url = f"https://finnhub.io/api/v1/news?category=general&token={api_key}"
+        response = requests.get(url)
+        news_items = response.json()
+        
+        extracted_tickers = set()
+        
+        if isinstance(news_items, list):
+            for item in news_items:
+                # Look at headlines and summaries
+                text_to_scan = f"{item.get('headline', '')} {item.get('summary', '')}"
+                
+                # Regex to find uppercase stock market symbols (e.g., AAPL, TSLA, NVDA)
+                # Matches 2 to 5 character capitalized word blocks surrounded by word boundaries
+                potential_tickers = re.findall(r'\b[A-Z]{2,5}\b', text_to_scan)
+                
+                # Exclude common non-ticker capital words often found in financial text
+                blacklist = {"US", "USA", "CEO", "FED", "AI", "SEC", "GDP", "CPI", "IPO", "ETF", "YOY"}
+                
+                for ticker in potential_tickers:
+                    if ticker not in blacklist:
+                        extracted_tickers.add(ticker)
+                        
+        # Limit to the top 15 discovered tickers to prevent API rate-limiting delays
+        return list(extracted_tickers)[:15]
+        
+    except Exception as e:
+        st.error(f"Error fetching dynamic narrative feed: {e}")
+        return []
 
 # ---------------------------------------------------
 # SECURE AGGREGATED NEWS SENTIMENT
@@ -127,25 +150,28 @@ def get_confluence_data(ticker_symbol):
         return None
 
 # ---------------------------------------------------
-# EXPANDED SELECTION SIDEBAR PANEL INTERFACE
+# CONTROLS PANEL SIDEBAR
 # ---------------------------------------------------
 st.sidebar.header("⚙️ Target Matrix Controls")
 scan_mode = st.sidebar.radio(
     "Select Discovery Feed:",
-    ("🟢 Auto Bullish/Momentum List", "🔴 Auto Bearish/Put List", "✍️ Manual Custom Entry")
+    ("📰 Live Market Sentiment Feed", "✍️ Manual Custom Entry")
 )
 
 if scan_mode == "✍️ Manual Custom Entry":
     user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="AAPL, NVDA, TSLA")
     watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-    
-elif scan_mode == "🟢 Auto Bullish/Momentum List":
-    watch_list = ["AAPL", "NVDA", "TSLA", "AMD", "MSFT", "AMZN", "META", "GOOG", "PLTR", "SPY", "QQQ"]
-    st.sidebar.info("💡 Scanning structural market leaders for Call entries.")
-    
 else:
-    watch_list = ["INTC", "PFE", "NIO", "TLRY", "SNAP", "WBD", "CHPT", "NKE", "SBUX", "SQQQ", "SPXS"]
-    st.sidebar.warning("🚨 Scanning distressed assets, retail shorts, and inverse ETFs for structural breakdown Put entries.")
+    # FETCH TICKERS DYNAMICALLY OUT OF THE LIVE NEWS NARRATIVE STREAM
+    with st.spinner("Analyzing real-time market stream for trending tickers..."):
+        watch_list = get_dynamic_trending_tickers()
+        
+    if watch_list:
+        st.sidebar.success(f"Dynamic Watchlist Generated! Found {len(watch_list)} tickers in live news.")
+        st.sidebar.write(", ".join(watch_list))
+    else:
+        watch_list = ["AAPL", "NVDA", "SPY"] # Secure fallback if live stream fails
+        st.sidebar.warning("Fallback triggered. Using base index anchors.")
 
 run_scan = st.sidebar.button("🛡️ Run Scan Matrix Pipeline")
 
@@ -155,11 +181,11 @@ run_scan = st.sidebar.button("🛡️ Run Scan Matrix Pipeline")
 if run_scan:
     results = []
     
-    with st.spinner(f"Processing matrix data pipelines for {len(watch_list)} targets..."):
+    with st.spinner(f"Processing matrix pipelines for discovered targets..."):
         for ticker in watch_list:
             tech = get_confluence_data(ticker)
             if tech is None:
-                continue
+                continue # Skip tickers that don't return valid stock historical data
                 
             sent_score, sent_label, vol = get_aggregated_sentiment(ticker)
             
@@ -217,7 +243,6 @@ if run_scan:
             labels={"Sentiment Score": "Media Sentiment", "Volume Spike (RVOL)": "Relative Volume Spikes (RVOL)"}
         )
         
-        # Format text parameters for extreme black legibility contrast
         fig.update_traces(
             textposition='top center', 
             textfont=dict(color='black', size=13, family='Arial Black')
@@ -228,4 +253,4 @@ if run_scan:
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.error("Screener execution timeout or missing server arrays. Try running the scan process again.")
+        st.error("No valid public tickers found in this specific news cycle. Refresh or try manual mode.")
