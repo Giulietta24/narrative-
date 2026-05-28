@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import plotly.express as px
 
-st.set_page_config(page_title="Narrative Sentiment Radar Pro", layout="wide")
+st.set_page_config(page_title="Short-Term Narrative Scanner", layout="wide")
 
-st.title("📈 Narrative Sentiment Engine Pro")
-st.write("Analyze custom assets using an aggregated sentiment volume matrix paired with 30-day price trends.")
+st.title("⚡ Hyper-Tactical Narrative Scanner (Short-Term)")
+st.write("Optimized for 1 to 5-day hold strategies using a 10-day trend + Daily Confirmation filter.")
 
 # Initialize VADER
 @st.cache_resource
@@ -19,7 +19,7 @@ def load_analyzer():
 analyzer = load_analyzer()
 
 # ---------------------------------------------------
-# FETCH AGGREGATED HEADLINES & CALCULATE TOTAL SCORE
+# SECURE AGGREGATED NEWS SENTIMENT
 # ---------------------------------------------------
 def get_aggregated_sentiment(ticker_symbol):
     try:
@@ -40,7 +40,6 @@ def get_aggregated_sentiment(ticker_symbol):
             return 0.0, "NEUTRAL", "No news found in last 30 days.", 0
         
         scores = []
-        # Sample up to 15 headlines for a true aggregate narrative baseline
         max_headlines = min(len(news_list), 15)
         
         for item in news_list[:max_headlines]:
@@ -52,30 +51,19 @@ def get_aggregated_sentiment(ticker_symbol):
         if not scores:
             return 0.0, "NEUTRAL", "No text data extracted.", 0
             
-        # Calculate statistical mean across the headline ecosystem
         avg_score = sum(scores) / len(scores)
-        article_count = len(scores)
-        
-        if avg_score >= 0.05:
-            sentiment_label = "POSITIVE"
-        elif avg_score <= -0.05:
-            sentiment_label = "NEGATIVE"
-        else:
-            sentiment_label = "NEUTRAL"
-            
-        # Preview the single latest headline as a reference point
-        latest_headline_preview = news_list[0].get('headline', 'N/A')
-        return round(avg_score, 2), sentiment_label, latest_headline_preview, article_count
+        return round(avg_score, 2), "POSITIVE" if avg_score >= 0.05 else ("NEGATIVE" if avg_score <= -0.05 else "NEUTRAL"), news_list[0].get('headline', 'N/A'), len(scores)
         
     except Exception as e:
         return 0.0, "ERROR", f"Connection Fail: {str(e)}", 0
 
-# ------------------------------------
-# FETCH PRICE HISTORY
-# ------------------------------------
-def get_price_change(ticker_symbol):
+# ---------------------------------------------------
+# FETCH SHORT-TERM TREND & DAILY CONFIRMATION
+# ---------------------------------------------------
+def get_short_term_metrics(ticker_symbol):
     try:
-        df = yf.download(ticker_symbol.strip(), period="2mo", interval="1d", group_by="column", progress=False)
+        # Download slightly more than 10 days to handle weekends/holidays securely
+        df = yf.download(ticker_symbol.strip(), period="1mo", interval="1d", group_by="column", progress=False)
         if df is None or df.empty:
             return None
             
@@ -83,13 +71,20 @@ def get_price_change(ticker_symbol):
             df.columns = df.columns.get_level_values(0)
             
         close = df["Close"]
-        if len(close) < 31:
+        if len(close) < 11:
             return None
             
-        last = float(close.iloc[-1])
-        last_30 = float(close.iloc[-30])
+        # 1. 10-Day Trend Calculation
+        today_close = float(close.iloc[-1])
+        ten_days_ago_close = float(close.iloc[-10])
+        trend_10d = round(((today_close - ten_days_ago_close) / ten_days_ago_close) * 100, 2)
         
-        return round(((last - last_30) / last_30) * 100, 2)
+        # 2. Secondary Filter: Up Today Check (Current close vs Yesterday's close)
+        yesterday_close = float(close.iloc[-2])
+        is_up_today = today_close > yesterday_close
+        daily_change = round(((today_close - yesterday_close) / yesterday_close) * 100, 2)
+        
+        return trend_10d, is_up_today, daily_change
     except Exception:
         return None
 
@@ -97,82 +92,70 @@ def get_price_change(ticker_symbol):
 # DYNAMIC INTERFACE CONTROLS
 # ------------------------------------
 st.sidebar.header("🛠️ Dashboard Controls")
-
-# Step 1: Input Box for Tickers
-user_input = st.sidebar.text_input(
-    "Enter Ticker Symbols (Comma Separated):", 
-    value="IWM, AAPL, NVDA, TSLA, MSFT"
-)
-
-# Convert string input cleanly into a Python list
+user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="IWM, AAPL, NVDA, TSLA, MSFT")
 watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-
-st.sidebar.write(f"Loaded Tickers: `{watch_list}`")
-
-# Run Button
-run_scan = st.sidebar.button("🚀 Run Comprehensive Narrative Scan")
+run_scan = st.sidebar.button("🚀 Run Short-Term Tactical Scan")
 
 # ------------------------------------
-# MAIN PROCESS EXECUTION
+# PROCESS SCREENER EXECUTION
 # ------------------------------------
 if run_scan:
     results = []
     
-    with st.spinner(f"Aggregating market headlines and calculating data paths for {len(watch_list)} assets..."):
+    with st.spinner("Processing tactical micro-trends..."):
         for ticker in watch_list:
-            price_change = get_price_change(ticker)
-            if price_change is None:
-                st.warning(f"⚠️ Could not pull price trend history for symbol: **{ticker}**")
+            price_metrics = get_short_term_metrics(ticker)
+            if price_metrics is None:
+                st.warning(f"⚠️ Insufficient trading history for: **{ticker}**")
                 continue
                 
+            trend_10d, is_up_today, daily_change = price_metrics
             sentiment_score, sentiment_label, top_news, volume = get_aggregated_sentiment(ticker)
             
-            # Smart Quadrant Action Formulas using Aggregated Logic
-            if sentiment_score >= 0.05 and price_change > 0:
-                action = "🚀 Momentum Leader (Buy/Hold)"
-            elif sentiment_score >= 0.05 and price_change <= 0:
-                action = "🔍 Bullish Divergence (Watch for Dip)"
-            elif sentiment_score < -0.05 and price_change > 0:
-                action = "⚠️ Bearish Divergence (High Risk Flag)"
-            elif sentiment_score <= -0.05 and price_change <= 0:
-                action = "📉 Value Trap / Weak (Avoid)"
+            # --- HYPER TACTICAL FILTER SELECTION LOGIC ---
+            if sentiment_score >= 0.05 and trend_10d > 0:
+                if is_up_today:
+                    action = "🟢 GREEN LIGHT: Strong Entry (Trend + News + Daily Confirmation)"
+                else:
+                    action = "🟡 PULLBACK: Wait (Good Trend/News, but Down Today)"
+            elif sentiment_score >= 0.05 and trend_10d <= 0:
+                if is_up_today:
+                    action = "🔵 REVERSAL WATCH: Early Entry Speculation"
+                else:
+                    action = "📉 VALUE TRAP: Avoid (Good News, Crashing Price)"
+            elif sentiment_score < -0.05 and trend_10d > 0:
+                action = "⚠️ EXHAUSTION: Danger (Price high, but news turning toxic)"
             else:
-                action = "😐 Neutral / Directionless"
+                action = "🔴 RED LIGHT: No Setup (Negative/Neutral Momentum)"
                 
             results.append({
                 "Ticker": ticker,
-                "30d Price Change (%)": price_change,
-                "Aggregate Sentiment Score": sentiment_score,
-                "Headlines Analyzed": volume,
-                "Narrative Status": sentiment_label,
+                "10d Trend (%)": trend_10d,
+                "Daily Change (%)": daily_change,
+                "Confirmed Up Today?": "✅ Yes" if is_up_today else "❌ No",
+                "Sentiment Score": sentiment_score,
                 "Tactical Strategy": action,
-                "Latest Headline Sample": top_news
+                "Latest Headline Preview": top_news
             })
             
     if results:
         df_results = pd.DataFrame(results)
-        
-        # 1. Output Table Block
-        st.write("### 📌 Aggregated Narrative Metrics Matrix")
+        st.write("### 📌 Short-Term Tactical Matrix")
         st.dataframe(df_results, use_container_width=True)
         
-        # 2. Plotly Interactive Map Visual
-        st.write("### 🗺️ Multi-Asset Narrative Mapping Engine")
+        # Matrix Chart Map
+        st.write("### 🗺️ Micro-Momentum Map")
         fig = px.scatter(
             df_results, 
-            x="Aggregate Sentiment Score", 
-            y="30d Price Change (%)",
+            x="Sentiment Score", 
+            y="10d Trend (%)",
             text="Ticker",
             color="Tactical Strategy",
-            size="Headlines Analyzed", # Visual bubble scaling based on data reliability volume
             range_x=[-1, 1],
-            title="Strategic Placement Distribution Map",
-            labels={"Aggregate Sentiment Score": "Aggregated Media Sentiment Baseline", "30d Price Change (%)": "30-Day Technical Trajectory (%)"}
+            title="Short-Term Execution Mapping",
+            labels={"Sentiment Score": "Media Sentiment Baseline", "10d Trend (%)": "10-Day Momentum Window (%)"}
         )
-        fig.update_traces(textposition='top center')
+        fig.update_traces(textposition='top center', marker=dict(size=14))
         fig.add_hline(y=0, line_dash="dash", line_color="gray")
         fig.add_vline(x=0, line_dash="dash", line_color="gray")
-        
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.error("No valid asset entities were parsed during checkout. Check entry nomenclature or API limits.")
