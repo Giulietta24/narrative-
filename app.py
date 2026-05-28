@@ -127,22 +127,25 @@ def get_confluence_data(ticker_symbol):
         return None
 
 # ---------------------------------------------------
-# DYNAMIC SELECTION SIDEBAR PANEL INTERFACE
+# EXPANDED SELECTION SIDEBAR PANEL INTERFACE
 # ---------------------------------------------------
-st.sidebar.header("⚙️ Selection Modes")
+st.sidebar.header("⚙️ Target Matrix Controls")
 scan_mode = st.sidebar.radio(
-    "Choose Target Discovery Method:",
-    ("🔥 Auto Market Scanner", "✍️ Manual Custom Entry")
+    "Select Discovery Feed:",
+    ("🟢 Auto Bullish/Momentum List", "🔴 Auto Bearish/Put List", "✍️ Manual Custom Entry")
 )
 
 if scan_mode == "✍️ Manual Custom Entry":
     user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="AAPL, NVDA, TSLA")
     watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
+    
+elif scan_mode == "🟢 Auto Bullish/Momentum List":
+    watch_list = ["AAPL", "NVDA", "TSLA", "AMD", "MSFT", "AMZN", "META", "GOOG", "PLTR", "SPY", "QQQ"]
+    st.sidebar.info("💡 Scanning structural market leaders for Call entries.")
+    
 else:
-    # AUTOMATED PRE-BUILT HIGH LIQUIDITY OPTIONS PORTFOLIO LIST
-    # Selected across 4 key option categories: Mega Cap, High-beta growth, Index tracking ETFs, Churners
-    watch_list = ["AAPL", "NVDA", "TSLA", "AMD", "MSFT", "AMZN", "META", "GOOG", "NFLX", "COIN", "MARA", "PLTR", "SPY", "QQQ", "IWM"]
-    st.sidebar.info("💡 **Auto Mode Enabled:** Currently scanning the top 15 most liquid option underlyings in the global market.")
+    watch_list = ["INTC", "PFE", "NIO", "TLRY", "SNAP", "WBD", "CHPT", "NKE", "SBUX", "SQQQ", "SPXS"]
+    st.sidebar.warning("🚨 Scanning distressed assets, retail shorts, and inverse ETFs for structural breakdown Put entries.")
 
 run_scan = st.sidebar.button("🛡️ Run Scan Matrix Pipeline")
 
