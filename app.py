@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import plotly.express as px
 
-st.set_page_config(page_title="Dynamic Options Radar", layout="wide")
+st.set_page_config(page_title="Dynamic Options Radar Pro", layout="wide")
 
 st.title("🛡️ Institutional Confluence & Narrative Options Engine")
-st.write("Extracting trending tickers dynamically from live market narratives and running multi-pillar filters.")
+st.write("Extracting up to 20 trending tickers dynamically from live market narratives with multi-pillar filtering.")
 
 @st.cache_resource
 def load_analyzer():
@@ -19,7 +19,25 @@ def load_analyzer():
 analyzer = load_analyzer()
 
 # ---------------------------------------------------
-# DYNAMIC NARRATIVE SCRAPER (No Hardcoding)
+# STRATEGY EXPLANATION GLOSSARY
+# ---------------------------------------------------
+with st.expander("📖 Click to view Strategy Key & Pillar Meanings"):
+    st.markdown("""
+    ### 🧭 The 5 Confluence Pillars Explained
+    Your score is calculated out of 5 based on how many of these conditions are met:
+    1. **Positive Sentiment:** Aggregate media coverage scores above +0.10.
+    2. **10-Day Up-Trend:** The short-term trajectory is moving upward.
+    3. **Daily Confirmation:** The price is trading higher than yesterday's close (No falling knives).
+    4. **Macro Bull Market:** Price is securely above the 200-day Moving Average (Structural safety).
+    5. **Volume Spike (RVOL >= 1.5):** Volume is 50%+ higher than average (Institutional confirmation).
+
+    ### 🧭 Options Target Matching
+    * **🟢 BUY LONG CALLS (Score 4-5):** Complete positive confluence. High-volume breakout backed by heavy institutional buying.
+    * **🔴 BUY LONG PUTS (Score 0-1 + Negative News):** Complete negative confluence. Perfect structural breakdown environment.
+    """)
+
+# ---------------------------------------------------
+# DYNAMIC NARRATIVE SCRAPER (Expanded to 20 Tickers)
 # ---------------------------------------------------
 def get_dynamic_trending_tickers():
     try:
@@ -28,7 +46,6 @@ def get_dynamic_trending_tickers():
             return []
             
         api_key = st.secrets["FINNHUB_API_KEY"]
-        # Pulling breaking market news from the general live stream
         url = f"https://finnhub.io/api/v1/news?category=general&token={api_key}"
         response = requests.get(url)
         news_items = response.json()
@@ -37,22 +54,18 @@ def get_dynamic_trending_tickers():
         
         if isinstance(news_items, list):
             for item in news_items:
-                # Look at headlines and summaries
                 text_to_scan = f"{item.get('headline', '')} {item.get('summary', '')}"
-                
-                # Regex to find uppercase stock market symbols (e.g., AAPL, TSLA, NVDA)
-                # Matches 2 to 5 character capitalized word blocks surrounded by word boundaries
                 potential_tickers = re.findall(r'\b[A-Z]{2,5}\b', text_to_scan)
                 
-                # Exclude common non-ticker capital words often found in financial text
-                blacklist = {"US", "USA", "CEO", "FED", "AI", "SEC", "GDP", "CPI", "IPO", "ETF", "YOY"}
+                # Filter out heavy non-ticker financial acronyms
+                blacklist = {"US", "USA", "CEO", "FED", "AI", "SEC", "GDP", "CPI", "IPO", "ETF", "YOY", "UK", "EU"}
                 
                 for ticker in potential_tickers:
                     if ticker not in blacklist:
                         extracted_tickers.add(ticker)
                         
-        # Limit to the top 15 discovered tickers to prevent API rate-limiting delays
-        return list(extracted_tickers)[:15]
+        # UPGRADED: Expanded limits to process up to 20 unique tickers
+        return list(extracted_tickers)[:20]
         
     except Exception as e:
         st.error(f"Error fetching dynamic narrative feed: {e}")
@@ -64,7 +77,7 @@ def get_dynamic_trending_tickers():
 def get_aggregated_sentiment(ticker_symbol):
     try:
         if "FINNHUB_API_KEY" not in st.secrets:
-            return 0.0, "ERROR", 0
+            return 0.0, "ERROR", "Missing Secret API configuration", 0
             
         api_key = st.secrets["FINNHUB_API_KEY"]
         clean_symbol = ticker_symbol.split('.')[0].strip().upper()
@@ -77,7 +90,7 @@ def get_aggregated_sentiment(ticker_symbol):
         news_list = response.json()
         
         if not news_list or not isinstance(news_list, list):
-            return 0.0, "NEUTRAL", 0
+            return 0.0, "NEUTRAL", "No company news found.", 0
         
         scores = []
         max_headlines = min(len(news_list), 15)
@@ -89,14 +102,17 @@ def get_aggregated_sentiment(ticker_symbol):
                 scores.append(vs['compound'])
                 
         if not scores:
-            return 0.0, "NEUTRAL", 0
+            return 0.0, "NEUTRAL", "No text metrics extracted.", 0
             
         avg_score = sum(scores) / len(scores)
         label = "POSITIVE" if avg_score >= 0.05 else ("NEGATIVE" if avg_score <= -0.05 else "NEUTRAL")
-        return round(avg_score, 2), label, len(scores)
+        
+        # Capture the latest individual breaking headline text
+        latest_headline = news_list[0].get('headline', 'N/A')
+        return round(avg_score, 2), label, latest_headline, len(scores)
         
     except Exception:
-        return 0.0, "ERROR", 0
+        return 0.0, "ERROR", "Connection Timeout", 0
 
 # ---------------------------------------------------
 # CONFLUENCE TECHNICAL CALCULATION UTILITIES
@@ -159,18 +175,17 @@ scan_mode = st.sidebar.radio(
 )
 
 if scan_mode == "✍️ Manual Custom Entry":
-    user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="AAPL, NVDA, TSLA")
+    user_input = st.sidebar.text_input("Enter Ticker Symbols (Comma Separated):", value="AAPL, NVDA, TSLA, AMD, MSFT, AMZN, NFLX")
     watch_list = [t.strip().upper() for t in user_input.split(",") if t.strip()]
 else:
-    # FETCH TICKERS DYNAMICALLY OUT OF THE LIVE NEWS NARRATIVE STREAM
-    with st.spinner("Analyzing real-time market stream for trending tickers..."):
+    with st.spinner("Analyzing real-time global news streams for trending tickers..."):
         watch_list = get_dynamic_trending_tickers()
         
     if watch_list:
         st.sidebar.success(f"Dynamic Watchlist Generated! Found {len(watch_list)} tickers in live news.")
         st.sidebar.write(", ".join(watch_list))
     else:
-        watch_list = ["AAPL", "NVDA", "SPY"] # Secure fallback if live stream fails
+        watch_list = ["AAPL", "NVDA", "SPY"]
         st.sidebar.warning("Fallback triggered. Using base index anchors.")
 
 run_scan = st.sidebar.button("🛡️ Run Scan Matrix Pipeline")
@@ -181,13 +196,13 @@ run_scan = st.sidebar.button("🛡️ Run Scan Matrix Pipeline")
 if run_scan:
     results = []
     
-    with st.spinner(f"Processing matrix pipelines for discovered targets..."):
+    with st.spinner(f"Processing multi-pillar options formulas for {len(watch_list)} discovered assets..."):
         for ticker in watch_list:
             tech = get_confluence_data(ticker)
             if tech is None:
-                continue # Skip tickers that don't return valid stock historical data
+                continue 
                 
-            sent_score, sent_label, vol = get_aggregated_sentiment(ticker)
+            sent_score, sent_label, latest_headline, article_vol = get_aggregated_sentiment(ticker)
             
             # --- CONFLUENCE SCORE ACCUMULATION ---
             score_cards = 0
@@ -221,7 +236,8 @@ if run_scan:
                 "Volume Spike (RVOL)": tech["rvol"],
                 "RSI": tech["rsi"],
                 "Macro Bull?": "✅ Yes" if tech["above_macro_trend"] else "❌ No",
-                "Sentiment Score": sent_score
+                "Sentiment Score": sent_score,
+                "Latest Headline Sample": latest_headline  # ADDED: Headline column successfully re-linked
             })
             
     if results:
@@ -253,4 +269,4 @@ if run_scan:
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.error("No valid public tickers found in this specific news cycle. Refresh or try manual mode.")
+        st.error("No valid public assets parsed during this specific news window. Hit scan again to cycle the feed.")
